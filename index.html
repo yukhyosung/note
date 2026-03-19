@@ -206,6 +206,77 @@
     background: rgba(255,255,255,.3);
   }
 
+  /* ── Text Input Panel ── */
+  .text-panel {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--paper-dark);
+    border-top: 2px solid var(--ink-faint);
+    flex-shrink: 0;
+  }
+  .text-panel-inner {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .text-panel-label {
+    font-size: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--ink-faint);
+    padding-left: 2px;
+  }
+  .text-input-box {
+    width: 100%;
+    min-height: 40px;
+    max-height: 90px;
+    padding: 8px 12px;
+    border: 1.5px solid var(--ink-faint);
+    border-radius: 10px;
+    background: var(--paper);
+    font-family: 'Noto Sans KR', sans-serif;
+    font-size: 15px;
+    color: var(--ink);
+    outline: none;
+    resize: none;
+    line-height: 1.5;
+    transition: border-color .15s;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  .text-input-box:focus { border-color: var(--accent); }
+  .text-input-box::placeholder { color: var(--ink-faint); font-size: 13px; }
+  .text-send-btn {
+    width: 44px; height: 44px; flex-shrink: 0;
+    border-radius: 12px;
+    border: none;
+    background: var(--ink);
+    color: var(--paper);
+    font-size: 20px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s, transform .1s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .text-send-btn:active { background: var(--accent); transform: scale(.95); }
+  .text-font-opts {
+    display: flex; gap: 6px; align-items: center;
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .text-font-opts::-webkit-scrollbar { display: none; }
+  .font-opt {
+    padding: 3px 10px; border-radius: 20px;
+    border: 1.5px solid var(--ink-faint);
+    background: transparent; cursor: pointer;
+    font-size: 11px; color: var(--ink-soft);
+    white-space: nowrap; flex-shrink: 0;
+    transition: all .12s;
+  }
+  .font-opt.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
   /* ── Status Bar ── */
   .status-bar {
     display: flex; align-items: center; justify-content: space-between;
@@ -363,6 +434,27 @@
     <canvas id="ruledCanvas"></canvas>
     <canvas id="drawCanvas"></canvas>
     <div id="eraserCursor"></div>
+  </div>
+
+  <!-- Text Input Panel -->
+  <div class="text-panel" id="textPanel">
+    <div class="text-panel-inner">
+      <div class="text-font-opts">
+        <span class="text-panel-label">✏️ 손글씨 키보드로 입력 →</span>
+        <button class="font-opt active" data-font="noto">기본체</button>
+        <button class="font-opt" data-font="myeongjo">명조체</button>
+        <button class="font-opt" data-font="mono">고정폭</button>
+        <button class="font-opt" data-size="small">작게</button>
+        <button class="font-opt active" data-size="medium">보통</button>
+        <button class="font-opt" data-size="large">크게</button>
+      </div>
+      <textarea class="text-input-box" id="textInputBox"
+        placeholder="여기 탭 → 안드로이드 키보드 손글씨 모드로 입력하면 캔버스에 글씨가 추가돼요"
+        rows="2"
+        inputmode="text"
+      ></textarea>
+    </div>
+    <button class="text-send-btn" id="textSendBtn" title="캔버스에 추가">↑</button>
   </div>
 
   <!-- Status Bar -->
@@ -810,7 +902,107 @@ drawCanvas.addEventListener('touchcancel', e => {
   endDraw(e);
 }, { passive: false });
 
-// Keyboard shortcuts
+// ── Text Panel → Canvas ──
+let textFont = 'noto';
+let textSize = 'medium';
+let textCursorY = 60; // 다음 텍스트 삽입 Y 위치
+
+const fontFamilyMap = {
+  noto: "'Noto Sans KR', sans-serif",
+  myeongjo: "'Nanum Myeongjo', serif",
+  mono: "'IBM Plex Mono', monospace"
+};
+const fontSizeMap = { small: 18, medium: 26, large: 36 };
+
+// 폰트 옵션 버튼
+document.querySelectorAll('.font-opt[data-font]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    textFont = btn.dataset.font;
+    document.querySelectorAll('.font-opt[data-font]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+document.querySelectorAll('.font-opt[data-size]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    textSize = btn.dataset.size;
+    document.querySelectorAll('.font-opt[data-size]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+// 텍스트를 캔버스에 그리기
+function renderTextToCanvas(text) {
+  if (!text.trim()) return;
+  saveUndo();
+
+  const fontSize = fontSizeMap[textSize] || 26;
+  const fontFamily = fontFamilyMap[textFont] || fontFamilyMap.noto;
+  const lineHeight = fontSize * 1.6;
+  const marginLeft = 72; // 빨간 여백선 오른쪽
+  const maxWidth = drawCanvas.width - marginLeft - 24;
+
+  dctx.save();
+  dctx.font = `${fontSize}px ${fontFamily}`;
+  dctx.fillStyle = penColor;
+  dctx.textBaseline = 'alphabetic';
+
+  // 줄바꿈 처리
+  const paragraphs = text.split('\n');
+  paragraphs.forEach(para => {
+    // 단어 단위 줄바꿈
+    const words = para.split('');
+    let line = '';
+    for (let i = 0; i < words.length; i++) {
+      const testLine = line + words[i];
+      const metrics = dctx.measureText(testLine);
+      if (metrics.width > maxWidth && line.length > 0) {
+        // 줄 노트 선에 맞춰서 그리기
+        const snappedY = Math.round(textCursorY / 36) * 36;
+        dctx.fillText(line, marginLeft, snappedY);
+        line = words[i];
+        textCursorY += lineHeight;
+      } else {
+        line = testLine;
+      }
+    }
+    if (line) {
+      const snappedY = Math.round(textCursorY / 36) * 36;
+      dctx.fillText(line, marginLeft, snappedY);
+      textCursorY += lineHeight;
+    }
+  });
+
+  dctx.restore();
+
+  // 캔버스 끝 도달하면 처음으로
+  if (textCursorY > drawCanvas.height - 40) {
+    textCursorY = 60;
+  }
+
+  saveTabCanvas();
+}
+
+// 전송 버튼
+document.getElementById('textSendBtn').addEventListener('click', () => {
+  const box = document.getElementById('textInputBox');
+  const text = box.value;
+  if (!text.trim()) return;
+  renderTextToCanvas(text);
+  box.value = '';
+  box.focus();
+});
+
+// Enter 키로도 전송 (Shift+Enter = 줄바꿈)
+document.getElementById('textInputBox').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    document.getElementById('textSendBtn').click();
+  }
+});
+
+// 탭 전환시 텍스트 커서 Y 초기화
+function resetTextCursor() { textCursorY = 60; }
+
 document.addEventListener('keydown', e => {
   if ((e.ctrlKey||e.metaKey) && e.key==='z') { e.preventDefault(); undo(); }
   if ((e.ctrlKey||e.metaKey) && (e.key==='y'||(e.shiftKey&&e.key==='z'))) { e.preventDefault(); redo(); }
