@@ -733,45 +733,82 @@ document.getElementById('downloadBtn').addEventListener('click', () => {
   a.click();
 });
 
-// ── Canvas events (Pointer Events only — covers mouse, touch, Apple Pencil) ──
+// ── Canvas Events ──
+// Android 스타일러스 호환: Touch Events + Pointer Events 모두 처리
+// pointerType 'pen' = 스타일러스, 'touch' = 손가락, 'mouse' = 마우스
+
+let activeTouchId = null; // 첫 번째 터치만 추적
+
+// ── Pointer Events (스타일러스 / 마우스) ──
 drawCanvas.addEventListener('pointerdown', e => {
+  // 스타일러스(pen) 또는 마우스만 여기서 처리
+  // 손가락 터치는 touchstart에서 처리
+  if (e.pointerType === 'touch') return;
   e.preventDefault();
-  // 멀티터치 두 번째 손가락 무시 (손바닥 거부)
-  if (!e.isPrimary) return;
-  drawCanvas.setPointerCapture(e.pointerId);
+  try { drawCanvas.setPointerCapture(e.pointerId); } catch(err) {}
   startDraw(e);
 }, { passive: false });
 
 drawCanvas.addEventListener('pointermove', e => {
+  if (e.pointerType === 'touch') return;
   e.preventDefault();
-  if (!e.isPrimary) return;
   draw(e);
-  if (tool === 'eraser') {
-    const rect = drawCanvas.getBoundingClientRect();
-    eraserCursor.style.left = (e.clientX - rect.left) + 'px';
-    eraserCursor.style.top = (e.clientY - rect.top) + 'px';
-    const sz = penSize * 6;
-    eraserCursor.style.width = sz + 'px';
-    eraserCursor.style.height = sz + 'px';
-  }
 }, { passive: false });
 
 drawCanvas.addEventListener('pointerup', e => {
-  if (!e.isPrimary) return;
+  if (e.pointerType === 'touch') return;
   endDraw(e);
-});
+}, { passive: false });
+
 drawCanvas.addEventListener('pointercancel', e => {
-  if (!e.isPrimary) return;
+  if (e.pointerType === 'touch') return;
   endDraw(e);
-});
-drawCanvas.addEventListener('pointerleave', e => {
-  if (!e.isPrimary) return;
-  if (isDrawing) endDraw(e);
-  if (tool === 'eraser') eraserCursor.style.display = 'none';
-});
-drawCanvas.addEventListener('pointerenter', e => {
-  if (tool === 'eraser') eraserCursor.style.display = 'block';
-});
+}, { passive: false });
+
+// ── Touch Events (손가락 터치 + 일부 스타일러스) ──
+drawCanvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.changedTouches[0];
+  activeTouchId = t.identifier;
+  // touch force (일부 기기에서 필압)
+  const pressure = t.force > 0 ? t.force : 0.5;
+  const rect = drawCanvas.getBoundingClientRect();
+  const scaleX = drawCanvas.width / rect.width;
+  const scaleY = drawCanvas.height / rect.height;
+  const fakeE = {
+    clientX: t.clientX, clientY: t.clientY,
+    pressure, preventDefault: () => {}
+  };
+  startDraw(fakeE);
+}, { passive: false });
+
+drawCanvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  let t = null;
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    if (e.changedTouches[i].identifier === activeTouchId) {
+      t = e.changedTouches[i]; break;
+    }
+  }
+  if (!t) t = e.changedTouches[0];
+  const pressure = t.force > 0 ? t.force : 0.5;
+  const fakeE = {
+    clientX: t.clientX, clientY: t.clientY,
+    pressure, preventDefault: () => {}
+  };
+  draw(fakeE);
+}, { passive: false });
+
+drawCanvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  activeTouchId = null;
+  endDraw(e);
+}, { passive: false });
+
+drawCanvas.addEventListener('touchcancel', e => {
+  activeTouchId = null;
+  endDraw(e);
+}, { passive: false });
 
 // Keyboard shortcuts
 document.addEventListener('keydown', e => {
