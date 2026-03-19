@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="손글씨 노트">
+<meta name="theme-color" content="#f0ebe0">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-512.png">
+<title>손글씨 노트</title>
+<link href="https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@700;800&family=IBM+Plex+Mono:wght@400&family=Noto+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --paper: #faf8f3;
+    --paper-dark: #f0ebe0;
+    --ink: #1c1814;
+    --ink-soft: #5a5248;
+    --ink-faint: #c0b8ac;
+    --accent: #c44b2b;
+    --line: #ddd6c8;
+  }
+
+  html, body {
+    height: 100%; width: 100%;
+    overflow: hidden;
+    background: #ccc7bc;
+    font-family: 'Noto Sans KR', sans-serif;
+    touch-action: none;
+  }
+
+  .notebook {
+    width: 100vw; height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--paper);
+  }
+
+  /* ── Tab Bar ── */
+  .tab-bar {
+    display: flex;
+    align-items: flex-end;
+    padding: 6px 10px 0;
+    background: var(--paper-dark);
+    border-bottom: 2px solid var(--ink-faint);
+    gap: 0;
+    overflow-x: auto;
+    flex-shrink: 0;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tab-bar::-webkit-scrollbar { display: none; }
+
+  .tab {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    height: 36px;
+    padding: 0 12px 0 14px;
+    background: var(--paper-dark);
+    border: 1.5px solid var(--ink-faint);
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--ink-soft);
+    white-space: nowrap;
+    position: relative;
+    flex-shrink: 0;
+    max-width: 140px;
+    user-select: none;
+    transition: background .15s;
+  }
+  .tab.active {
+    background: var(--paper);
+    color: var(--ink);
+    font-weight: 500;
+    z-index: 2;
+  }
+  .tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px; left: 0; right: 0;
+    height: 2px;
+    background: var(--paper);
+  }
+  .tab-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .tab-name { overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+  .tab-close {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: none; background: transparent;
+    cursor: pointer; color: var(--ink-faint); font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .1s; flex-shrink: 0;
+  }
+  .tab-close:hover { background: #f8d0c8; color: var(--accent); }
+  .tab-add {
+    height: 28px; width: 28px; margin: 0 4px 4px;
+    border: 1.5px dashed var(--ink-faint); border-radius: 6px;
+    background: transparent; cursor: pointer; color: var(--ink-faint);
+    font-size: 18px; display: flex; align-items: center; justify-content: center;
+    transition: all .15s; flex-shrink: 0; align-self: center;
+  }
+  .tab-add:hover { border-color: var(--accent); color: var(--accent); background: #f8d0c8; }
+
+  /* ── Toolbar ── */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 5px 10px;
+    background: var(--paper);
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .toolbar::-webkit-scrollbar { display: none; }
+
+  .tool-group { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+  .tool-sep { width: 1px; height: 20px; background: var(--line); margin: 0 5px; flex-shrink: 0; }
+
+  .tool-btn {
+    width: 34px; height: 34px;
+    border: 1.5px solid transparent; border-radius: 6px;
+    background: transparent; cursor: pointer;
+    color: var(--ink-soft); font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .1s; flex-shrink: 0; position: relative;
+  }
+  .tool-btn:hover { background: var(--paper-dark); color: var(--ink); }
+  .tool-btn.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .tool-btn svg { width: 18px; height: 18px; }
+
+  /* Pen size selector */
+  .size-btn {
+    width: 34px; height: 34px;
+    border-radius: 6px; border: 1.5px solid transparent;
+    background: transparent; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .1s; flex-shrink: 0;
+  }
+  .size-btn.active { border-color: var(--ink); background: var(--paper-dark); }
+  .size-dot { border-radius: 50%; background: var(--ink); display: block; }
+
+  /* Color swatches */
+  .color-swatch {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 2px solid transparent; cursor: pointer;
+    transition: transform .1s, border-color .1s; flex-shrink: 0;
+  }
+  .color-swatch.active { border-color: var(--ink); transform: scale(1.2); }
+
+  /* Opacity slider */
+  .opacity-slider {
+    width: 70px; height: 4px; border-radius: 2px;
+    -webkit-appearance: none; appearance: none;
+    background: linear-gradient(to right, transparent, var(--ink));
+    cursor: pointer; flex-shrink: 0;
+  }
+  .opacity-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px;
+    border-radius: 50%; background: var(--paper);
+    border: 2px solid var(--ink); cursor: pointer;
+  }
+
+  /* ── Canvas Area ── */
+  .canvas-wrap {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    cursor: crosshair;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  canvas {
+    position: absolute;
+    top: 0; left: 0;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Ruled lines canvas is behind drawing canvas */
+  #ruledCanvas { z-index: 0; }
+  #drawCanvas { z-index: 1; }
+
+  /* Eraser cursor */
+  .canvas-wrap.eraser-mode { cursor: none; }
+  #eraserCursor {
+    position: absolute;
+    border: 2px solid var(--ink-soft);
+    border-radius: 50%;
+    pointer-events: none;
+    display: none;
+    z-index: 10;
+    transform: translate(-50%, -50%);
+    background: rgba(255,255,255,.3);
+  }
+
+  /* ── Status Bar ── */
+  .status-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 3px 12px;
+    background: var(--paper-dark);
+    border-top: 1px solid var(--line);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px; color: var(--ink-faint);
+    flex-shrink: 0;
+  }
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #4caf50; display: inline-block; margin-right: 5px;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.4);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  .modal-overlay.show { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--paper); border-radius: 14px;
+    padding: 24px; width: min(320px, 90vw);
+    box-shadow: 0 20px 60px rgba(0,0,0,.25);
+    transform: translateY(8px); transition: transform .2s;
+  }
+  .modal-overlay.show .modal { transform: none; }
+  .modal h3 { font-family: 'Nanum Myeongjo', serif; font-size: 17px; margin-bottom: 14px; }
+  .modal input {
+    width: 100%; border: 1.5px solid var(--ink-faint); border-radius: 6px;
+    padding: 8px 12px; font-family: 'Noto Sans KR', sans-serif;
+    font-size: 14px; color: var(--ink); background: var(--paper);
+    outline: none; margin-bottom: 14px;
+  }
+  .modal input:focus { border-color: var(--accent); }
+  .modal-colors { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .btn { padding: 8px 18px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-family: 'Noto Sans KR', sans-serif; font-weight: 500; transition: all .15s; }
+  .btn-ghost { background: transparent; border: 1.5px solid var(--ink-faint); color: var(--ink-soft); }
+  .btn-ghost:hover { background: var(--paper-dark); }
+  .btn-primary { background: var(--ink); color: var(--paper); }
+  .btn-primary:hover { background: var(--accent); }
+
+  /* ── Zoom indicator ── */
+  #zoomLabel {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; color: var(--ink-soft);
+    background: var(--paper-dark);
+    border: 1px solid var(--line);
+    border-radius: 4px; padding: 2px 7px;
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="notebook">
+
+  <!-- Tab Bar -->
+  <div class="tab-bar" id="tabBar">
+    <button class="tab-add" id="addTabBtn">+</button>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <!-- Draw tools -->
+    <div class="tool-group">
+      <button class="tool-btn active" id="penBtn" title="펜">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+        </svg>
+      </button>
+      <button class="tool-btn" id="highlightBtn" title="형광펜">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 3L5 7l10 10 4-4L9 3zM5 7l-2 2 4 4 2-2M14 17l-4 4H6v-4l4-4"/>
+        </svg>
+      </button>
+      <button class="tool-btn" id="eraserBtn" title="지우개">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20 20H7L3 16l10-10 7 7-3.5 3.5"/>
+          <path d="M6 11l7 7"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="tool-sep"></div>
+
+    <!-- Pen sizes -->
+    <div class="tool-group" id="sizeGroup">
+      <button class="size-btn active" data-size="2"><span class="size-dot" style="width:4px;height:4px"></span></button>
+      <button class="size-btn" data-size="5"><span class="size-dot" style="width:8px;height:8px"></span></button>
+      <button class="size-btn" data-size="10"><span class="size-dot" style="width:13px;height:13px"></span></button>
+      <button class="size-btn" data-size="20"><span class="size-dot" style="width:20px;height:20px"></span></button>
+    </div>
+
+    <div class="tool-sep"></div>
+
+    <!-- Colors -->
+    <div class="tool-group" id="colorGroup">
+      <div class="color-swatch active" data-color="#1c1814" style="background:#1c1814"></div>
+      <div class="color-swatch" data-color="#c44b2b" style="background:#c44b2b"></div>
+      <div class="color-swatch" data-color="#3b7dd8" style="background:#3b7dd8"></div>
+      <div class="color-swatch" data-color="#2b9e6a" style="background:#2b9e6a"></div>
+      <div class="color-swatch" data-color="#9b59b6" style="background:#9b59b6"></div>
+      <div class="color-swatch" data-color="#e67e22" style="background:#e67e22"></div>
+    </div>
+
+    <div class="tool-sep"></div>
+
+    <!-- Actions -->
+    <div class="tool-group">
+      <button class="tool-btn" id="undoBtn" title="실행 취소 (Ctrl+Z)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 7h10a5 5 0 010 10H3"/><path d="M7 3L3 7l4 4"/>
+        </svg>
+      </button>
+      <button class="tool-btn" id="redoBtn" title="다시 실행 (Ctrl+Y)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 7H11a5 5 0 000 10h10"/><path d="M17 3l4 4-4 4"/>
+        </svg>
+      </button>
+      <button class="tool-btn" id="clearBtn" title="전체 지우기">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>
+        </svg>
+      </button>
+      <button class="tool-btn" id="downloadBtn" title="이미지로 저장">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="tool-sep"></div>
+
+    <!-- Background style -->
+    <div class="tool-group">
+      <button class="tool-btn active" id="bgRuled" title="줄 노트">☰</button>
+      <button class="tool-btn" id="bgDot" title="점 노트">⠿</button>
+      <button class="tool-btn" id="bgPlain" title="빈 노트">□</button>
+    </div>
+
+    <div class="tool-sep"></div>
+    <span id="zoomLabel">100%</span>
+  </div>
+
+  <!-- Canvas Area -->
+  <div class="canvas-wrap" id="canvasWrap">
+    <canvas id="ruledCanvas"></canvas>
+    <canvas id="drawCanvas"></canvas>
+    <div id="eraserCursor"></div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <span><span class="status-dot"></span><span id="statusText">펜 모드</span></span>
+    <span id="tabNameLabel"></span>
+    <span id="saveTime"></span>
+  </div>
+</div>
+
+<!-- New Tab Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3>새 탭 만들기</h3>
+    <input type="text" id="modalInput" placeholder="탭 이름" maxlength="24"/>
+    <div class="modal-colors" id="modalColors"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="modalCancel">취소</button>
+      <button class="btn btn-primary" id="modalConfirm">만들기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Constants ──
+const TAB_COLORS = ['#c44b2b','#3b7dd8','#2b9e6a','#9b59b6','#e67e22','#1abc9c','#e91e63','#607d8b'];
+const BG = { ruled:'ruled', dot:'dot', plain:'plain' };
+
+// ── State ──
+let tabs = [];
+let activeId = null;
+let newTabColor = TAB_COLORS[0];
+
+let tool = 'pen'; // pen | highlight | eraser
+let penSize = 2;
+let penColor = '#1c1814';
+let bgMode = BG.ruled;
+
+let isDrawing = false;
+let lastX = 0, lastY = 0;
+let lastPressure = 1;
+
+let undoStack = {}; // id -> [ImageData, ...]
+let redoStack = {}; // id -> [ImageData, ...]
+const MAX_UNDO = 30;
+
+// ── Canvas ──
+const ruledCanvas = document.getElementById('ruledCanvas');
+const drawCanvas = document.getElementById('drawCanvas');
+const rctx = ruledCanvas.getContext('2d');
+const dctx = drawCanvas.getContext('2d');
+const canvasWrap = document.getElementById('canvasWrap');
+const eraserCursor = document.getElementById('eraserCursor');
+
+function resizeCanvases() {
+  const w = canvasWrap.clientWidth;
+  const h = canvasWrap.clientHeight;
+  // Save current drawing
+  let saved = null;
+  if (drawCanvas.width > 0 && drawCanvas.height > 0 && activeId) {
+    saved = dctx.getImageData(0, 0, drawCanvas.width, drawCanvas.height);
+  }
+  ruledCanvas.width = drawCanvas.width = w;
+  ruledCanvas.height = drawCanvas.height = h;
+  drawBackground();
+  if (saved && activeId) {
+    dctx.putImageData(saved, 0, 0);
+  }
+}
+
+function drawBackground() {
+  rctx.clearRect(0, 0, ruledCanvas.width, ruledCanvas.height);
+  rctx.fillStyle = '#faf8f3';
+  rctx.fillRect(0, 0, ruledCanvas.width, ruledCanvas.height);
+
+  if (bgMode === BG.ruled) {
+    const lineH = 36;
+    rctx.strokeStyle = '#ddd6c8';
+    rctx.lineWidth = 1;
+    for (let y = lineH; y < ruledCanvas.height; y += lineH) {
+      rctx.beginPath();
+      rctx.moveTo(0, y); rctx.lineTo(ruledCanvas.width, y);
+      rctx.stroke();
+    }
+    // margin line
+    rctx.strokeStyle = 'rgba(196,75,43,.2)';
+    rctx.lineWidth = 1.5;
+    rctx.beginPath();
+    rctx.moveTo(56, 0); rctx.lineTo(56, ruledCanvas.height);
+    rctx.stroke();
+  } else if (bgMode === BG.dot) {
+    const gap = 28;
+    rctx.fillStyle = '#c8c0b4';
+    for (let x = gap; x < ruledCanvas.width; x += gap) {
+      for (let y = gap; y < ruledCanvas.height; y += gap) {
+        rctx.beginPath();
+        rctx.arc(x, y, 1.2, 0, Math.PI*2);
+        rctx.fill();
+      }
+    }
+  }
+}
+
+// ── Drawing ──
+function getPos(e) {
+  const rect = drawCanvas.getBoundingClientRect();
+  const scaleX = drawCanvas.width / rect.width;
+  const scaleY = drawCanvas.height / rect.height;
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
+  const pressure = (e.pressure !== undefined && e.pressure > 0) ? e.pressure : 0.5;
+  return { x, y, pressure };
+}
+
+function startDraw(e) {
+  e.preventDefault();
+  const { x, y, pressure } = getPos(e);
+  isDrawing = true;
+  lastX = x; lastY = y; lastPressure = pressure || 1;
+  if (tool !== 'eraser') {
+    saveUndo();
+    dctx.beginPath();
+    dctx.moveTo(x, y);
+  }
+}
+
+function draw(e) {
+  e.preventDefault();
+  if (!isDrawing) return;
+  const { x, y, pressure } = getPos(e);
+  const p = pressure || lastPressure || 1;
+
+  if (tool === 'eraser') {
+    const sz = penSize * 6;
+    dctx.clearRect(x - sz/2, y - sz/2, sz, sz);
+    // update eraser cursor
+    eraserCursor.style.left = x + 'px';
+    eraserCursor.style.top = y + 'px';
+    eraserCursor.style.width = sz + 'px';
+    eraserCursor.style.height = sz + 'px';
+    lastX = x; lastY = y;
+    return;
+  }
+
+  dctx.lineJoin = 'round';
+  dctx.lineCap = 'round';
+
+  if (tool === 'highlight') {
+    dctx.globalAlpha = 0.35;
+    dctx.strokeStyle = penColor;
+    dctx.lineWidth = penSize * 5;
+    dctx.globalCompositeOperation = 'multiply';
+  } else {
+    // pressure sensitivity
+    const dynamicSize = penSize * (0.5 + p * 0.8);
+    dctx.globalAlpha = 0.92 + p * 0.08;
+    dctx.strokeStyle = penColor;
+    dctx.lineWidth = dynamicSize;
+    dctx.globalCompositeOperation = 'source-over';
+  }
+
+  dctx.beginPath();
+  dctx.moveTo(lastX, lastY);
+  // smooth curve
+  const mx = (lastX + x) / 2;
+  const my = (lastY + y) / 2;
+  dctx.quadraticCurveTo(lastX, lastY, mx, my);
+  dctx.stroke();
+
+  lastX = x; lastY = y; lastPressure = p;
+}
+
+function endDraw(e) {
+  if (!isDrawing) return;
+  isDrawing = false;
+  dctx.globalAlpha = 1;
+  dctx.globalCompositeOperation = 'source-over';
+  saveTabCanvas();
+}
+
+// ── Undo/Redo ──
+function saveUndo() {
+  if (!activeId) return;
+  if (!undoStack[activeId]) undoStack[activeId] = [];
+  if (!redoStack[activeId]) redoStack[activeId] = [];
+  const data = dctx.getImageData(0, 0, drawCanvas.width, drawCanvas.height);
+  undoStack[activeId].push(data);
+  if (undoStack[activeId].length > MAX_UNDO) undoStack[activeId].shift();
+  redoStack[activeId] = [];
+}
+
+function undo() {
+  if (!activeId || !undoStack[activeId] || !undoStack[activeId].length) return;
+  if (!redoStack[activeId]) redoStack[activeId] = [];
+  const cur = dctx.getImageData(0, 0, drawCanvas.width, drawCanvas.height);
+  redoStack[activeId].push(cur);
+  const prev = undoStack[activeId].pop();
+  dctx.putImageData(prev, 0, 0);
+  saveTabCanvas();
+}
+
+function redo() {
+  if (!activeId || !redoStack[activeId] || !redoStack[activeId].length) return;
+  if (!undoStack[activeId]) undoStack[activeId] = [];
+  const cur = dctx.getImageData(0, 0, drawCanvas.width, drawCanvas.height);
+  undoStack[activeId].push(cur);
+  const next = redoStack[activeId].pop();
+  dctx.putImageData(next, 0, 0);
+  saveTabCanvas();
+}
+
+// ── Save / Load canvas per tab ──
+function saveTabCanvas() {
+  const tab = tabs.find(t => t.id === activeId);
+  if (!tab) return;
+  try {
+    tab.dataUrl = drawCanvas.toDataURL('image/png');
+    saveToStorage();
+    updateSaveTime();
+  } catch(e) {}
+}
+
+function loadTabCanvas(tab) {
+  dctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+  if (tab.dataUrl) {
+    const img = new Image();
+    img.onload = () => dctx.drawImage(img, 0, 0);
+    img.src = tab.dataUrl;
+  }
+}
+
+// ── Storage ──
+function saveToStorage() {
+  try {
+    const lite = tabs.map(t => ({ id:t.id, name:t.name, color:t.color, bg:t.bg, dataUrl:t.dataUrl||'' }));
+    localStorage.setItem('hw_tabs', JSON.stringify(lite));
+    localStorage.setItem('hw_active', activeId || '');
+  } catch(e) {}
+}
+function loadFromStorage() {
+  try {
+    const d = localStorage.getItem('hw_tabs');
+    if (d) tabs = JSON.parse(d);
+    const a = localStorage.getItem('hw_active');
+    if (a) activeId = a;
+  } catch(e) {}
+}
+
+// ── Tabs ──
+function genId() { return 't' + Date.now() + Math.random().toString(36).slice(2,5); }
+
+function addTab(name, color) {
+  const id = genId();
+  tabs.push({ id, name, color, bg: bgMode, dataUrl: '' });
+  undoStack[id] = []; redoStack[id] = [];
+  return id;
+}
+
+function renderTabs() {
+  const bar = document.getElementById('tabBar');
+  bar.querySelectorAll('.tab').forEach(el => el.remove());
+  const addBtn = document.getElementById('addTabBtn');
+  tabs.forEach(tab => {
+    const el = document.createElement('div');
+    el.className = 'tab' + (tab.id === activeId ? ' active' : '');
+    el.dataset.id = tab.id;
+    el.innerHTML = `<span class="tab-dot" style="background:${tab.color}"></span><span class="tab-name">${esc(tab.name)}</span><button class="tab-close" data-id="${tab.id}">×</button>`;
+    el.addEventListener('click', e => { if(!e.target.classList.contains('tab-close')) activateTab(tab.id); });
+    el.querySelector('.tab-close').addEventListener('click', e => { e.stopPropagation(); deleteTab(tab.id); });
+    bar.insertBefore(el, addBtn);
+  });
+}
+
+function activateTab(id) {
+  activeId = id;
+  const tab = tabs.find(t => t.id === id);
+  if (!tab) return;
+  if (tab.bg) { bgMode = tab.bg; updateBgBtns(); }
+  renderTabs();
+  drawBackground();
+  loadTabCanvas(tab);
+  document.getElementById('tabNameLabel').textContent = tab.name;
+  if (!undoStack[id]) undoStack[id] = [];
+  if (!redoStack[id]) redoStack[id] = [];
+}
+
+function deleteTab(id) {
+  if (tabs.length <= 1) return;
+  const idx = tabs.findIndex(t => t.id === id);
+  tabs.splice(idx, 1);
+  saveToStorage();
+  if (activeId === id) activateTab(tabs[Math.max(0, idx-1)].id);
+  else renderTabs();
+}
+
+// ── Tool selection ──
+function setTool(t) {
+  tool = t;
+  document.getElementById('penBtn').classList.toggle('active', t === 'pen');
+  document.getElementById('highlightBtn').classList.toggle('active', t === 'highlight');
+  document.getElementById('eraserBtn').classList.toggle('active', t === 'eraser');
+  canvasWrap.classList.toggle('eraser-mode', t === 'eraser');
+  eraserCursor.style.display = t === 'eraser' ? 'block' : 'none';
+  const labels = { pen:'펜 모드', highlight:'형광펜 모드', eraser:'지우개 모드' };
+  document.getElementById('statusText').textContent = labels[t] || '';
+}
+
+document.getElementById('penBtn').addEventListener('click', () => setTool('pen'));
+document.getElementById('highlightBtn').addEventListener('click', () => setTool('highlight'));
+document.getElementById('eraserBtn').addEventListener('click', () => setTool('eraser'));
+
+// Size
+document.getElementById('sizeGroup').querySelectorAll('.size-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    penSize = parseInt(btn.dataset.size);
+    document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+// Colors
+document.getElementById('colorGroup').querySelectorAll('.color-swatch').forEach(s => {
+  s.addEventListener('click', () => {
+    penColor = s.dataset.color;
+    document.querySelectorAll('#colorGroup .color-swatch').forEach(sw => sw.classList.remove('active'));
+    s.classList.add('active');
+    if (tool === 'eraser') setTool('pen');
+  });
+});
+
+// Background
+function updateBgBtns() {
+  document.getElementById('bgRuled').classList.toggle('active', bgMode === BG.ruled);
+  document.getElementById('bgDot').classList.toggle('active', bgMode === BG.dot);
+  document.getElementById('bgPlain').classList.toggle('active', bgMode === BG.plain);
+}
+['bgRuled','bgDot','bgPlain'].forEach(id => {
+  document.getElementById(id).addEventListener('click', () => {
+    bgMode = { bgRuled:BG.ruled, bgDot:BG.dot, bgPlain:BG.plain }[id];
+    const tab = tabs.find(t => t.id === activeId);
+    if (tab) tab.bg = bgMode;
+    updateBgBtns();
+    drawBackground();
+    saveToStorage();
+  });
+});
+
+// Undo/Redo/Clear/Download
+document.getElementById('undoBtn').addEventListener('click', undo);
+document.getElementById('redoBtn').addEventListener('click', redo);
+document.getElementById('clearBtn').addEventListener('click', () => {
+  if (!confirm('이 탭의 필기를 모두 지울까요?')) return;
+  saveUndo();
+  dctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+  saveTabCanvas();
+});
+document.getElementById('downloadBtn').addEventListener('click', () => {
+  // Merge background + drawing
+  const tmp = document.createElement('canvas');
+  tmp.width = drawCanvas.width; tmp.height = drawCanvas.height;
+  const tctx = tmp.getContext('2d');
+  tctx.drawImage(ruledCanvas, 0, 0);
+  tctx.drawImage(drawCanvas, 0, 0);
+  const a = document.createElement('a');
+  const tab = tabs.find(t => t.id === activeId);
+  a.download = (tab ? tab.name : '노트') + '.png';
+  a.href = tmp.toDataURL('image/png');
+  a.click();
+});
+
+// ── Canvas events (Pointer Events only — covers mouse, touch, Apple Pencil) ──
+drawCanvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  // 멀티터치 두 번째 손가락 무시 (손바닥 거부)
+  if (!e.isPrimary) return;
+  drawCanvas.setPointerCapture(e.pointerId);
+  startDraw(e);
+}, { passive: false });
+
+drawCanvas.addEventListener('pointermove', e => {
+  e.preventDefault();
+  if (!e.isPrimary) return;
+  draw(e);
+  if (tool === 'eraser') {
+    const rect = drawCanvas.getBoundingClientRect();
+    eraserCursor.style.left = (e.clientX - rect.left) + 'px';
+    eraserCursor.style.top = (e.clientY - rect.top) + 'px';
+    const sz = penSize * 6;
+    eraserCursor.style.width = sz + 'px';
+    eraserCursor.style.height = sz + 'px';
+  }
+}, { passive: false });
+
+drawCanvas.addEventListener('pointerup', e => {
+  if (!e.isPrimary) return;
+  endDraw(e);
+});
+drawCanvas.addEventListener('pointercancel', e => {
+  if (!e.isPrimary) return;
+  endDraw(e);
+});
+drawCanvas.addEventListener('pointerleave', e => {
+  if (!e.isPrimary) return;
+  if (isDrawing) endDraw(e);
+  if (tool === 'eraser') eraserCursor.style.display = 'none';
+});
+drawCanvas.addEventListener('pointerenter', e => {
+  if (tool === 'eraser') eraserCursor.style.display = 'block';
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey||e.metaKey) && e.key==='z') { e.preventDefault(); undo(); }
+  if ((e.ctrlKey||e.metaKey) && (e.key==='y'||(e.shiftKey&&e.key==='z'))) { e.preventDefault(); redo(); }
+  if (e.key==='p') setTool('pen');
+  if (e.key==='h') setTool('highlight');
+  if (e.key==='e') setTool('eraser');
+});
+
+// ── Add Tab Modal ──
+function renderModalColors() {
+  const wrap = document.getElementById('modalColors');
+  wrap.innerHTML = '';
+  TAB_COLORS.forEach(c => {
+    const s = document.createElement('div');
+    s.className = 'color-swatch' + (c === newTabColor ? ' active' : '');
+    s.style.background = c; s.style.width = '24px'; s.style.height = '24px';
+    s.addEventListener('click', () => {
+      newTabColor = c;
+      wrap.querySelectorAll('.color-swatch').forEach(sw => sw.classList.remove('active'));
+      s.classList.add('active');
+    });
+    wrap.appendChild(s);
+  });
+}
+
+document.getElementById('addTabBtn').addEventListener('click', () => {
+  newTabColor = TAB_COLORS[tabs.length % TAB_COLORS.length];
+  document.getElementById('modalInput').value = '';
+  renderModalColors();
+  document.getElementById('modalOverlay').classList.add('show');
+  setTimeout(() => document.getElementById('modalInput').focus(), 150);
+});
+document.getElementById('modalCancel').addEventListener('click', () => document.getElementById('modalOverlay').classList.remove('show'));
+document.getElementById('modalOverlay').addEventListener('click', e => { if(e.target===document.getElementById('modalOverlay')) document.getElementById('modalOverlay').classList.remove('show'); });
+
+function confirmNewTab() {
+  const name = document.getElementById('modalInput').value.trim() || '새 탭';
+  const id = addTab(name, newTabColor);
+  renderTabs();
+  activateTab(id);
+  document.getElementById('modalOverlay').classList.remove('show');
+}
+document.getElementById('modalConfirm').addEventListener('click', confirmNewTab);
+document.getElementById('modalInput').addEventListener('keydown', e => { if(e.key==='Enter') confirmNewTab(); if(e.key==='Escape') document.getElementById('modalOverlay').classList.remove('show'); });
+
+// ── Helpers ──
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function updateSaveTime() {
+  const n = new Date();
+  document.getElementById('saveTime').textContent = `저장됨 ${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
+}
+
+// ── Init ──
+window.addEventListener('resize', () => { resizeCanvases(); });
+
+loadFromStorage();
+if (!tabs.length) {
+  addTab('수업 노트', '#3b7dd8');
+  addTab('아이디어', '#2b9e6a');
+}
+
+// Wait for layout
+requestAnimationFrame(() => {
+  resizeCanvases();
+  const startId = activeId && tabs.find(t => t.id === activeId) ? activeId : tabs[0].id;
+  activateTab(startId);
+  updateSaveTime();
+});
+</script>
+
+<script>
+// ── PWA Service Worker 등록 ──
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js')
+      .then(() => console.log('SW 등록 완료'))
+      .catch(e => console.log('SW 등록 실패', e));
+  });
+}
+</script>
+</body>
+</html>
