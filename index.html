@@ -172,12 +172,23 @@
   .canvas-wrap {
     flex: 1;
     position: relative;
-    overflow: hidden;
+    overflow-y: scroll;
+    overflow-x: hidden;
     cursor: crosshair;
-    touch-action: none;
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
+    /* 두 손가락 스크롤 허용, 한 손가락은 JS에서 처리 */
+    touch-action: pan-y;
+  }
+  .canvas-wrap::-webkit-scrollbar { width: 4px; }
+  .canvas-wrap::-webkit-scrollbar-thumb { background: var(--ink-faint); border-radius: 2px; }
+
+  /* 캔버스 컨테이너 — 실제 높이를 가짐 */
+  .canvas-inner {
+    position: relative;
+    width: 100%;
+    /* JS에서 높이 설정 */
   }
 
   canvas {
@@ -441,9 +452,11 @@
 
   <!-- Canvas Area -->
   <div class="canvas-wrap" id="canvasWrap">
-    <canvas id="ruledCanvas"></canvas>
-    <canvas id="drawCanvas"></canvas>
-    <div id="eraserCursor"></div>
+    <div class="canvas-inner" id="canvasInner">
+      <canvas id="ruledCanvas"></canvas>
+      <canvas id="drawCanvas"></canvas>
+      <div id="eraserCursor"></div>
+    </div>
   </div>
 
   <!-- OCR 변환 패널 -->
@@ -512,49 +525,93 @@ const drawCanvas = document.getElementById('drawCanvas');
 const rctx = ruledCanvas.getContext('2d');
 const dctx = drawCanvas.getContext('2d');
 const canvasWrap = document.getElementById('canvasWrap');
+const canvasInner = document.getElementById('canvasInner');
 const eraserCursor = document.getElementById('eraserCursor');
+
+const PAGE_HEIGHT_SCREENS = 3; // 초기 높이
 
 function resizeCanvases() {
   const w = canvasWrap.clientWidth;
   const h = canvasWrap.clientHeight;
-  // Save current drawing
+  const canvasH = h * PAGE_HEIGHT_SCREENS;
+
   let saved = null;
   if (drawCanvas.width > 0 && drawCanvas.height > 0 && activeId) {
     saved = dctx.getImageData(0, 0, drawCanvas.width, drawCanvas.height);
   }
+
   ruledCanvas.width = drawCanvas.width = w;
-  ruledCanvas.height = drawCanvas.height = h;
+  ruledCanvas.height = drawCanvas.height = canvasH;
+  canvasInner.style.height = canvasH + 'px';
+
   drawBackground();
   if (saved && activeId) {
     dctx.putImageData(saved, 0, 0);
   }
 }
 
+// 끝에 가까워지면 캔버스 자동 연장
+function extendCanvas() {
+  const w = drawCanvas.width;
+  const oldH = drawCanvas.height;
+  const addH = canvasWrap.clientHeight * 2; // 화면 2배씩 추가
+  const newH = oldH + addH;
+
+  // 기존 내용 저장
+  const savedDraw = dctx.getImageData(0, 0, w, oldH);
+  const savedRuled = rctx.getImageData(0, 0, w, oldH);
+
+  drawCanvas.height = newH;
+  ruledCanvas.height = newH;
+  canvasInner.style.height = newH + 'px';
+
+  // 기존 내용 복원
+  rctx.putImageData(savedRuled, 0, 0);
+  dctx.putImageData(savedDraw, 0, 0);
+
+  // 새로 생긴 영역에만 배경 그리기
+  drawBackgroundFrom(oldH, newH);
+}
+
+// 스크롤 감지 → 끝 200px 이내면 자동 연장
+canvasWrap.addEventListener('scroll', () => {
+  const scrollBottom = canvasWrap.scrollTop + canvasWrap.clientHeight;
+  const threshold = drawCanvas.height - 200;
+  if (scrollBottom >= threshold) {
+    extendCanvas();
+  }
+});
+
 function drawBackground() {
-  rctx.clearRect(0, 0, ruledCanvas.width, ruledCanvas.height);
+  drawBackgroundFrom(0, ruledCanvas.height);
+}
+
+function drawBackgroundFrom(fromY, toY) {
   rctx.fillStyle = '#faf8f3';
-  rctx.fillRect(0, 0, ruledCanvas.width, ruledCanvas.height);
+  rctx.fillRect(0, fromY, ruledCanvas.width, toY - fromY);
 
   if (bgMode === BG.ruled) {
     const lineH = 36;
     rctx.strokeStyle = '#ddd6c8';
     rctx.lineWidth = 1;
-    for (let y = lineH; y < ruledCanvas.height; y += lineH) {
+    // fromY에서 가장 가까운 줄선부터 시작
+    const startLine = Math.floor(fromY / lineH) * lineH + lineH;
+    for (let y = startLine; y < toY; y += lineH) {
       rctx.beginPath();
       rctx.moveTo(0, y); rctx.lineTo(ruledCanvas.width, y);
       rctx.stroke();
     }
-    // margin line
     rctx.strokeStyle = 'rgba(196,75,43,.2)';
     rctx.lineWidth = 1.5;
     rctx.beginPath();
-    rctx.moveTo(56, 0); rctx.lineTo(56, ruledCanvas.height);
+    rctx.moveTo(56, fromY); rctx.lineTo(56, toY);
     rctx.stroke();
   } else if (bgMode === BG.dot) {
     const gap = 28;
     rctx.fillStyle = '#c8c0b4';
+    const startY = Math.floor(fromY / gap) * gap + gap;
     for (let x = gap; x < ruledCanvas.width; x += gap) {
-      for (let y = gap; y < ruledCanvas.height; y += gap) {
+      for (let y = startY; y < toY; y += gap) {
         rctx.beginPath();
         rctx.arc(x, y, 1.2, 0, Math.PI*2);
         rctx.fill();
@@ -567,9 +624,10 @@ function drawBackground() {
 function getPos(e) {
   const rect = drawCanvas.getBoundingClientRect();
   const scaleX = drawCanvas.width / rect.width;
-  const scaleY = drawCanvas.height / rect.height;
+  // 스크롤 오프셋 반영
+  const scrollY = canvasWrap.scrollTop;
   const x = (e.clientX - rect.left) * scaleX;
-  const y = (e.clientY - rect.top) * scaleY;
+  const y = (e.clientY - rect.top) * scaleX + scrollY;
   const pressure = (e.pressure !== undefined && e.pressure > 0) ? e.pressure : 0.5;
   return { x, y, pressure };
 }
@@ -864,14 +922,15 @@ drawCanvas.addEventListener('pointercancel', e => {
 
 // ── Touch Events (손가락 터치 + 일부 스타일러스) ──
 drawCanvas.addEventListener('touchstart', e => {
+  // 두 손가락 = 스크롤 허용
+  if (e.touches.length >= 2) {
+    if (isDrawing) endDraw(e);
+    return;
+  }
   e.preventDefault();
   const t = e.changedTouches[0];
   activeTouchId = t.identifier;
-  // touch force (일부 기기에서 필압)
   const pressure = t.force > 0 ? t.force : 0.5;
-  const rect = drawCanvas.getBoundingClientRect();
-  const scaleX = drawCanvas.width / rect.width;
-  const scaleY = drawCanvas.height / rect.height;
   const fakeE = {
     clientX: t.clientX, clientY: t.clientY,
     pressure, preventDefault: () => {}
@@ -880,6 +939,7 @@ drawCanvas.addEventListener('touchstart', e => {
 }, { passive: false });
 
 drawCanvas.addEventListener('touchmove', e => {
+  if (e.touches.length >= 2) return; // 두 손가락 스크롤
   e.preventDefault();
   let t = null;
   for (let i = 0; i < e.changedTouches.length; i++) {
